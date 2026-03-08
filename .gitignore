@@ -1,0 +1,31 @@
+# Python (legacy)
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+*.spec
+
+# Rust
+src-tauri/target/
+
+# Node
+node_modules/
+dist/
+
+# Build artifacts
+build/
+*.app
+*.dmg
+*.msi
+*.exe
+*.deb
+*.AppImage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
