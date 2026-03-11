@@ -10,7 +10,17 @@ permissions:
   contents: write
 
 jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: get-version
     strategy:
       fail-fast: false
       matrix:
@@ -47,14 +57,21 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Delete existing release assets
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "v${{ needs.get-version.outputs.version }}" --yes --cleanup-tag 2>/dev/null || true
+
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ github.sha }}
-          releaseName: "DFA Visualizer (build ${{ github.run_number }})"
-          releaseBody: "Automated build from commit ${{ github.sha }}"
-          releaseDraft: true
+          tagName: v${{ needs.get-version.outputs.version }}
+          releaseName: "DFA Visualizer v${{ needs.get-version.outputs.version }}"
+          releaseBody: "Download the installer for your platform below."
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
