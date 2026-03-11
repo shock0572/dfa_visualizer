@@ -96,57 +96,12 @@ async fn open_dfa_login(
         "https://www.dataforazeroth.com/redirect?to=blizzard&from=%2Fmycharacters&region={region}"
     );
 
-    let _login_window = WebviewWindowBuilder::new(
-        &app,
-        "dfa-login",
-        WebviewUrl::External(url.parse().unwrap()),
-    )
-    .title("DFA - Login & Update Characters")
-    .inner_size(1000.0, 700.0)
-    .center()
-    .build()
-    .map_err(|e| format!("Failed to open login window: {e}"))?;
-
-    let state_arc = (*state).clone();
-    let app_handle = app.clone();
-
-    tauri::async_runtime::spawn(async move {
-        // Wait for mycharacters page
-        let mut on_mycharacters = false;
-        for _ in 0..360 {
-            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-            let win = match app_handle.get_webview_window("dfa-login") {
-                Some(w) => w,
-                None => return,
-            };
-
-            let url = match win.url() {
-                Ok(u) => u.to_string(),
-                Err(_) => continue,
-            };
-
-            if url.contains("/mycharacters") {
-                on_mycharacters = true;
-                break;
-            }
-        }
-
-        if !on_mycharacters {
-            return;
-        }
-
-        // Wait for the SPA to render the character table
-        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-
-        if app_handle.get_webview_window("dfa-login").is_none() {
-            return;
-        }
-
-        // Try extraction multiple times
-        let extract_js = r#"
-            (function() {
+    let init_script = r#"
+        (function() {
+            var interval = setInterval(function() {
+                if (!window.location.href.includes('/mycharacters')) return;
                 var links = document.querySelectorAll('a[href*="/characters/"]');
+                if (links.length < 2) return;
                 var seen = {};
                 var chars = [];
                 for (var i = 0; i < links.length; i++) {
@@ -162,33 +117,47 @@ async fn open_dfa_login(
                 }
                 if (chars.length > 0) {
                     document.title = 'DFA_CHARS:' + chars.join('|');
-                } else {
-                    document.title = 'DFA_NONE';
+                    clearInterval(interval);
                 }
-            })()
-        "#;
+            }, 3000);
+        })()
+    "#;
 
+    let _login_window = WebviewWindowBuilder::new(
+        &app,
+        "dfa-login",
+        WebviewUrl::External(url.parse().unwrap()),
+    )
+    .title("DFA - Login & Update Characters")
+    .initialization_script(init_script)
+    .inner_size(1000.0, 700.0)
+    .center()
+    .build()
+    .map_err(|e| format!("Failed to open login window: {e}"))?;
+
+    let state_arc = (*state).clone();
+    let app_handle = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        // Poll the window title -- the init script sets it to DFA_CHARS:... when ready
         let mut entries: Vec<config::CharacterEntry> = Vec::new();
 
-        for attempt in 0..10 {
-            if attempt > 0 {
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            }
+        for attempt in 0..120 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
             let w = match app_handle.get_webview_window("dfa-login") {
                 Some(w) => w,
                 None => return,
             };
 
-            let _ = w.eval(extract_js);
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
             let title = match w.title() {
                 Ok(t) => t,
                 Err(_) => continue,
             };
 
-            eprintln!("DFA import attempt {attempt}: title={title}");
+            if attempt % 6 == 0 {
+                eprintln!("DFA import poll {attempt}: title starts with {:?}", &title[..title.len().min(30)]);
+            }
 
             if let Some(data) = title.strip_prefix("DFA_CHARS:") {
                 entries = data
@@ -208,13 +177,14 @@ async fn open_dfa_login(
                     .collect();
 
                 if !entries.is_empty() {
+                    eprintln!("DFA import: found {} characters", entries.len());
                     break;
                 }
             }
         }
 
         if entries.is_empty() {
-            eprintln!("DFA import: no characters found after 10 attempts");
+            eprintln!("DFA import: no characters found");
             return;
         }
 
