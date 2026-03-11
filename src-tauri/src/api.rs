@@ -65,7 +65,6 @@ pub struct CharacterSummary {
     pub level: u32,
     pub item_level: u32,
     pub guild: String,
-    pub professions: Vec<String>,
     pub thumbnail: String,
 }
 
@@ -95,21 +94,6 @@ fn race_name(id: u64) -> &'static str {
     }
 }
 
-const PROFESSION_KEYS: &[(&str, &str)] = &[
-    ("account-recipes-alchemy", "Alchemy"),
-    ("account-recipes-blacksmithing", "Blacksmithing"),
-    ("account-recipes-cooking", "Cooking"),
-    ("account-recipes-enchanting", "Enchanting"),
-    ("account-recipes-engineering", "Engineering"),
-    ("account-recipes-fishing", "Fishing"),
-    ("account-recipes-herbalism", "Herbalism"),
-    ("account-recipes-inscription", "Inscription"),
-    ("account-recipes-jewelcrafting", "Jewelcrafting"),
-    ("account-recipes-leatherworking", "Leatherworking"),
-    ("account-recipes-mining", "Mining"),
-    ("account-recipes-skinning", "Skinning"),
-    ("account-recipes-tailoring", "Tailoring"),
-];
 
 #[derive(Deserialize)]
 struct VersionResponse {
@@ -352,16 +336,6 @@ pub async fn fetch_character_summary(region: &str, realm: &str, character: &str)
     }
     let data: CharacterResponse = resp.json().await.map_err(|e| e.to_string())?;
     let info = data.character.ok_or("No character data")?;
-    let scores = data.scores.unwrap_or_default();
-
-    let mut professions = Vec::new();
-    for (key, display) in PROFESSION_KEYS {
-        if let Some(val) = scores.get(*key).and_then(|v| v.as_f64()) {
-            if val > 0.0 {
-                professions.push(display.to_string());
-            }
-        }
-    }
 
     let region_lower = region.to_lowercase();
     let thumb = info.thumbnail.unwrap_or_default();
@@ -380,7 +354,6 @@ pub async fn fetch_character_summary(region: &str, realm: &str, character: &str)
         level: info.level.unwrap_or(0) as u32,
         item_level: info.average_item_level.unwrap_or(0) as u32,
         guild: info.guild_name.unwrap_or_default(),
-        professions,
         thumbnail,
     })
 }

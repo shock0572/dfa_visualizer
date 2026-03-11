@@ -34,7 +34,6 @@ export interface CharacterSummary {
   level: number;
   item_level: number;
   guild: string;
-  professions: string[];
   thumbnail: string;
 }
 

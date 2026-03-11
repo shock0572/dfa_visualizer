@@ -97,13 +97,6 @@ export function Overview({ profile }: Props) {
                     {ch.guild && <> &middot; &lt;{ch.guild}&gt;</>}
                   </span>
                 </div>
-                {ch.professions.length > 0 && (
-                  <div className="char-row-profs">
-                    {ch.professions.map((p) => (
-                      <span key={p} className="prof-tag">{p}</span>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           ))
