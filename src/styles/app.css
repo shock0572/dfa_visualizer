@@ -177,8 +177,8 @@ html, body, #root {
 .rankings-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  padding: 6px 10px 6px;
+  gap: 4px 3px;
+  padding: 4px 6px 4px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
