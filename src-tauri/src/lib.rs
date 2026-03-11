@@ -139,10 +139,9 @@ async fn open_dfa_login(
         // Wait for the SPA to render the character table
         tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
-        let win = match app_handle.get_webview_window("dfa-login") {
-            Some(w) => w,
-            None => return,
-        };
+        if app_handle.get_webview_window("dfa-login").is_none() {
+            return;
+        }
 
         // Try extraction multiple times
         let extract_js = r#"
