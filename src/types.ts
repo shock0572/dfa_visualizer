@@ -19,10 +19,30 @@ export interface ProfileData {
   updated_at: number;
 }
 
+export interface CharacterEntry {
+  region: string;
+  realm: string;
+  name: string;
+}
+
+export interface CharacterSummary {
+  name: string;
+  realm: string;
+  region: string;
+  class_name: string;
+  race_name: string;
+  level: number;
+  item_level: number;
+  guild: string;
+  professions: string[];
+  thumbnail: string;
+}
+
 export interface AppConfig {
   region: string;
   realm: string;
   character: string;
   tracked_rankings: string[];
   refresh_interval_minutes: number;
+  extra_characters: CharacterEntry[];
 }

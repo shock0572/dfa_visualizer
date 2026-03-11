@@ -53,6 +53,32 @@ fn get_all_categories() -> Vec<String> {
 }
 
 #[tauri::command]
+async fn fetch_all_characters(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<api::CharacterSummary>, String> {
+    let config = state.config.lock().await.clone();
+    if !config.is_configured() {
+        return Err("Profile not configured".into());
+    }
+
+    let mut chars = vec![config::CharacterEntry {
+        region: config.region.clone(),
+        realm: config.realm.clone(),
+        name: config.character.clone(),
+    }];
+    chars.extend(config.extra_characters.iter().cloned());
+
+    let mut results = Vec::new();
+    for entry in &chars {
+        match api::fetch_character_summary(&entry.region, &entry.realm, &entry.name).await {
+            Ok(summary) => results.push(summary),
+            Err(e) => eprintln!("Failed to fetch {}: {e}", entry.name),
+        }
+    }
+    Ok(results)
+}
+
+#[tauri::command]
 async fn start_update_watch(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,
@@ -123,6 +149,7 @@ pub fn run() {
             load_settings,
             save_settings,
             get_all_categories,
+            fetch_all_characters,
             start_update_watch,
         ])
         .setup(|app| {

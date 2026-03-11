@@ -55,6 +55,62 @@ pub struct ProfileData {
     pub updated_at: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CharacterSummary {
+    pub name: String,
+    pub realm: String,
+    pub region: String,
+    pub class_name: String,
+    pub race_name: String,
+    pub level: u32,
+    pub item_level: u32,
+    pub guild: String,
+    pub professions: Vec<String>,
+    pub thumbnail: String,
+}
+
+fn class_name(id: u64) -> &'static str {
+    match id {
+        1 => "Warrior", 2 => "Paladin", 3 => "Hunter", 4 => "Rogue",
+        5 => "Priest", 6 => "Death Knight", 7 => "Shaman", 8 => "Mage",
+        9 => "Warlock", 10 => "Monk", 11 => "Druid", 12 => "Demon Hunter",
+        13 => "Evoker", _ => "Unknown",
+    }
+}
+
+fn race_name(id: u64) -> &'static str {
+    match id {
+        1 => "Human", 2 => "Orc", 3 => "Dwarf", 4 => "Night Elf",
+        5 => "Undead", 6 => "Tauren", 7 => "Gnome", 8 => "Troll",
+        9 => "Goblin", 10 => "Blood Elf", 11 => "Draenei",
+        22 => "Worgen", 24 | 25 | 26 => "Pandaren",
+        27 => "Nightborne", 28 => "Highmountain Tauren",
+        29 => "Void Elf", 30 => "Lightforged Draenei",
+        31 => "Zandalari Troll", 32 => "Kul Tiran",
+        34 => "Dark Iron Dwarf", 35 => "Vulpera",
+        36 => "Mag'har Orc", 37 => "Mechagnome",
+        52 => "Dracthyr", 70 => "Dracthyr",
+        84 => "Earthen", 85 => "Earthen",
+        _ => "Unknown",
+    }
+}
+
+const PROFESSION_KEYS: &[(&str, &str)] = &[
+    ("account-recipes-alchemy", "Alchemy"),
+    ("account-recipes-blacksmithing", "Blacksmithing"),
+    ("account-recipes-cooking", "Cooking"),
+    ("account-recipes-enchanting", "Enchanting"),
+    ("account-recipes-engineering", "Engineering"),
+    ("account-recipes-fishing", "Fishing"),
+    ("account-recipes-herbalism", "Herbalism"),
+    ("account-recipes-inscription", "Inscription"),
+    ("account-recipes-jewelcrafting", "Jewelcrafting"),
+    ("account-recipes-leatherworking", "Leatherworking"),
+    ("account-recipes-mining", "Mining"),
+    ("account-recipes-skinning", "Skinning"),
+    ("account-recipes-tailoring", "Tailoring"),
+];
+
 #[derive(Deserialize)]
 struct VersionResponse {
     max: Option<String>,
@@ -71,6 +127,14 @@ struct CharacterInfo {
     name: Option<String>,
     realm: Option<String>,
     updated: Option<u64>,
+    class: Option<u64>,
+    race: Option<u64>,
+    level: Option<u64>,
+    #[serde(rename = "averageItemLevel")]
+    average_item_level: Option<u64>,
+    #[serde(rename = "guildName")]
+    guild_name: Option<String>,
+    thumbnail: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -239,15 +303,11 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         let rank_entry = rank_data.get(*api_key);
 
         let mut percentage = String::new();
-        let max_key_obt = format!("{api_key}-obtainable");
-        let max_val = max_values
-            .get(&max_key_obt)
-            .or_else(|| max_values.get(*api_key));
-        if let Some(&mv) = max_val {
+        if let Some(&mv) = max_values.get(*api_key) {
             if mv > 0.0 {
                 let pct = (score_val / mv) * 100.0;
-                if pct > 0.0 && pct <= 100.0 {
-                    percentage = format!("{pct:.1}%");
+                if pct > 0.0 {
+                    percentage = format!("{:.1}%", pct.min(100.0));
                 }
             }
         }
@@ -277,6 +337,52 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     }
 
     profile
+}
+
+pub async fn fetch_character_summary(region: &str, realm: &str, character: &str) -> Result<CharacterSummary, String> {
+    let client = reqwest::Client::builder()
+        .default_headers(build_headers())
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let data: CharacterResponse = resp.json().await.map_err(|e| e.to_string())?;
+    let info = data.character.ok_or("No character data")?;
+    let scores = data.scores.unwrap_or_default();
+
+    let mut professions = Vec::new();
+    for (key, display) in PROFESSION_KEYS {
+        if let Some(val) = scores.get(*key).and_then(|v| v.as_f64()) {
+            if val > 0.0 {
+                professions.push(display.to_string());
+            }
+        }
+    }
+
+    let region_lower = region.to_lowercase();
+    let thumb = info.thumbnail.unwrap_or_default();
+    let thumbnail = if thumb.is_empty() {
+        String::new()
+    } else {
+        format!("https://render.worldofwarcraft.com/{region_lower}/character/{thumb}")
+    };
+
+    Ok(CharacterSummary {
+        name: info.name.unwrap_or_default(),
+        realm: info.realm.unwrap_or_default(),
+        region: region.to_uppercase(),
+        class_name: class_name(info.class.unwrap_or(0)).to_string(),
+        race_name: race_name(info.race.unwrap_or(0)).to_string(),
+        level: info.level.unwrap_or(0) as u32,
+        item_level: info.average_item_level.unwrap_or(0) as u32,
+        guild: info.guild_name.unwrap_or_default(),
+        professions,
+        thumbnail,
+    })
 }
 
 pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {

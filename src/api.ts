@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProfileData, AppConfig } from "./types";
+import type { ProfileData, AppConfig, CharacterSummary } from "./types";
 
 export async function fetchProfile(): Promise<ProfileData> {
   return invoke<ProfileData>("fetch_profile");
@@ -19,6 +19,10 @@ export async function saveSettings(config: AppConfig): Promise<void> {
 
 export async function getAllCategories(): Promise<string[]> {
   return invoke<string[]>("get_all_categories");
+}
+
+export async function fetchAllCharacters(): Promise<CharacterSummary[]> {
+  return invoke<CharacterSummary[]>("fetch_all_characters");
 }
 
 export async function startUpdateWatch(): Promise<void> {

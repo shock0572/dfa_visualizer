@@ -113,22 +113,18 @@ fn position_at_click(window: &tauri::WebviewWindow, click_pos: tauri::PhysicalPo
 
 fn position_default(window: &tauri::WebviewWindow) {
     let scale = window.scale_factor().unwrap_or(1.0);
-    let win_w = 420.0;
-    let win_h = 560.0;
+    let win_w = (420.0 * scale) as i32;
+    let win_h = (560.0 * scale) as i32;
 
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let screen = monitor.size();
-        let sw = screen.width as f64 / scale;
-        let sh = screen.height as f64 / scale;
+        let sw = screen.width as i32;
+        let sh = screen.height as i32;
 
         let (x, y) = if cfg!(target_os = "macos") {
-            let x = (sw - win_w - 12.0) * scale;
-            let y = 32.0 * scale;
-            (x as i32, y as i32)
+            (sw - win_w - 12, (32.0 * scale) as i32)
         } else {
-            let x = (sw - win_w - 12.0) * scale;
-            let y = (sh - win_h - 48.0 - 12.0) * scale;
-            (x as i32, y as i32)
+            (sw - win_w - 12, sh - win_h - 60)
         };
 
         let _ = window.set_position(PhysicalPosition::new(x, y));

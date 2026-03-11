@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppConfig } from "../types";
+import type { AppConfig, CharacterEntry } from "../types";
 import { loadSettings, saveSettings, getAllCategories } from "../api";
 
 interface Props {
@@ -14,9 +14,11 @@ export function Settings({ onSaved, onCancel }: Props) {
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [newChar, setNewChar] = useState<CharacterEntry>({ region: "EU", realm: "", name: "" });
 
   useEffect(() => {
     Promise.all([loadSettings(), getAllCategories()]).then(([cfg, cats]) => {
+      if (!cfg.extra_characters) cfg.extra_characters = [];
       setConfig(cfg);
       setAllCategories(cats);
     });
@@ -31,6 +33,21 @@ export function Settings({ onSaved, onCancel }: Props) {
     if (next.has(cat)) next.delete(cat);
     else next.add(cat);
     setConfig({ ...config, tracked_rankings: Array.from(next) });
+  };
+
+  const addCharacter = () => {
+    if (!newChar.realm.trim() || !newChar.name.trim()) return;
+    setConfig({
+      ...config,
+      extra_characters: [...config.extra_characters, { ...newChar }],
+    });
+    setNewChar({ ...newChar, realm: "", name: "" });
+  };
+
+  const removeCharacter = (i: number) => {
+    const next = [...config.extra_characters];
+    next.splice(i, 1);
+    setConfig({ ...config, extra_characters: next });
   };
 
   const handleSave = async () => {
@@ -52,7 +69,7 @@ export function Settings({ onSaved, onCancel }: Props) {
 
   return (
     <div className="settings-page">
-      <h2>Character Profile</h2>
+      <h2>Main Character</h2>
 
       <div className="form-group">
         <label>Region</label>
@@ -82,8 +99,45 @@ export function Settings({ onSaved, onCancel }: Props) {
           type="text"
           value={config.character}
           onChange={(e) => setConfig({ ...config, character: e.target.value })}
-          placeholder="e.g. Earthpug"
+          placeholder="e.g. Quorra"
         />
+      </div>
+
+      <hr className="divider" />
+      <h2>Alt Characters</h2>
+
+      {config.extra_characters.map((ch, i) => (
+        <div key={i} className="alt-row">
+          <span className="alt-info">{ch.name} - {ch.realm} ({ch.region})</span>
+          <button className="alt-remove" onClick={() => removeCharacter(i)}>x</button>
+        </div>
+      ))}
+
+      <div className="alt-add">
+        <select
+          value={newChar.region}
+          onChange={(e) => setNewChar({ ...newChar, region: e.target.value })}
+          style={{ width: 60 }}
+        >
+          {REGIONS.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={newChar.realm}
+          onChange={(e) => setNewChar({ ...newChar, realm: e.target.value })}
+          placeholder="Realm"
+          style={{ flex: 1 }}
+        />
+        <input
+          type="text"
+          value={newChar.name}
+          onChange={(e) => setNewChar({ ...newChar, name: e.target.value })}
+          placeholder="Name"
+          style={{ flex: 1 }}
+        />
+        <button className="btn btn-primary" onClick={addCharacter} style={{ padding: "6px 12px" }}>+</button>
       </div>
 
       <hr className="divider" />

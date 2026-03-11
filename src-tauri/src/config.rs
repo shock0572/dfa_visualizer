@@ -44,12 +44,21 @@ const DEFAULT_TRACKED: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterEntry {
+    pub region: String,
+    pub realm: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub region: String,
     pub realm: String,
     pub character: String,
     pub tracked_rankings: Vec<String>,
     pub refresh_interval_minutes: u32,
+    #[serde(default)]
+    pub extra_characters: Vec<CharacterEntry>,
 }
 
 impl Default for AppConfig {
@@ -60,6 +69,7 @@ impl Default for AppConfig {
             character: String::new(),
             tracked_rankings: DEFAULT_TRACKED.iter().map(|s| s.to_string()).collect(),
             refresh_interval_minutes: 30,
+            extra_characters: Vec::new(),
         }
     }
 }
