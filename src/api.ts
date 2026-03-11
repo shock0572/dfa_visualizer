@@ -25,6 +25,10 @@ export async function fetchAllCharacters(): Promise<CharacterSummary[]> {
   return invoke<CharacterSummary[]>("fetch_all_characters");
 }
 
+export async function openDfaLogin(): Promise<void> {
+  return invoke<void>("open_dfa_login");
+}
+
 export async function startUpdateWatch(): Promise<void> {
   return invoke<void>("start_update_watch");
 }

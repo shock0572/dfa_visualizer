@@ -1,17 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-shell";
 import type { ProfileData, AppConfig } from "./types";
-import { getProfile, loadSettings, fetchProfile, startUpdateWatch } from "./api";
+import { getProfile, loadSettings, fetchProfile, openDfaLogin } from "./api";
 import { Overview } from "./components/Overview";
 import { RankingsGrid } from "./components/RankingsGrid";
 import { Settings } from "./components/Settings";
 import "./styles/app.css";
 
 type View = "overview" | "rankings" | "settings";
-
-const DFA_UPDATE_URL = "https://www.dataforazeroth.com/mycharacters";
 
 export default function App() {
   const [view, setView] = useState<View>("overview");
@@ -55,6 +52,12 @@ export default function App() {
       }
     });
 
+    const unlistenImport = listen<number>("characters-imported", (event) => {
+      setWatching(true);
+      setUpdateStatus(`Imported ${event.payload} characters! Watching for update...`);
+      refresh();
+    });
+
     // Hide window on blur with a delay so dragging doesn't dismiss it
     const appWindow = getCurrentWindow();
     const unlistenFocus = appWindow.onFocusChanged(({ payload: focused }) => {
@@ -73,6 +76,7 @@ export default function App() {
       unlistenProfile.then((f) => f());
       unlistenNav.then((f) => f());
       unlistenStatus.then((f) => f());
+      unlistenImport.then((f) => f());
       unlistenFocus.then((f) => f());
     };
   }, [refresh]);
@@ -90,9 +94,8 @@ export default function App() {
   };
 
   const handleUpdateChars = () => {
-    open(DFA_UPDATE_URL);
     setWatching(true);
-    startUpdateWatch().catch(() => {});
+    openDfaLogin().catch(() => {});
   };
 
   if (view === "settings") {
