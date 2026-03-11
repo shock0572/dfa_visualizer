@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ProfileData, AppConfig } from "./types";
-import { getProfile, loadSettings, fetchProfile, openDfaLogin } from "./api";
+import { open } from "@tauri-apps/plugin-shell";
+import { getProfile, loadSettings, fetchProfile, openDfaUpdate } from "./api";
 import { Overview } from "./components/Overview";
 import { RankingsGrid } from "./components/RankingsGrid";
 import { Settings } from "./components/Settings";
@@ -52,11 +53,6 @@ export default function App() {
       }
     });
 
-    const unlistenImport = listen<number>("characters-imported", (event) => {
-      setWatching(true);
-      setUpdateStatus(`Imported ${event.payload} characters! Watching for update...`);
-      refresh();
-    });
 
     // Hide window on blur with a delay so dragging doesn't dismiss it
     const appWindow = getCurrentWindow();
@@ -76,7 +72,6 @@ export default function App() {
       unlistenProfile.then((f) => f());
       unlistenNav.then((f) => f());
       unlistenStatus.then((f) => f());
-      unlistenImport.then((f) => f());
       unlistenFocus.then((f) => f());
     };
   }, [refresh]);
@@ -95,7 +90,8 @@ export default function App() {
 
   const handleUpdateChars = () => {
     setWatching(true);
-    openDfaLogin().catch(() => {});
+    open("https://www.dataforazeroth.com/mycharacters");
+    openDfaUpdate().catch(() => {});
   };
 
   if (view === "settings") {
