@@ -128,21 +128,24 @@ async fn open_dfa_login(
                 continue;
             }
 
-            // Wait for page content to load
-            tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
+            // Wait for SPA content to render
+            tokio::time::sleep(tokio::time::Duration::from_secs(12)).await;
 
-            // Extract character links from the DOM via document.title
+            // Extract all character profile links from the page
             let js = r#"
                 (function() {
-                    var rows = document.querySelectorAll('table tbody tr');
+                    var links = document.querySelectorAll('a[href*="/characters/"]');
+                    var seen = {};
                     var chars = [];
-                    for (var i = 0; i < rows.length; i++) {
-                        var a = rows[i].querySelector('td:first-child a');
-                        if (!a) continue;
-                        var href = a.getAttribute('href') || '';
+                    for (var i = 0; i < links.length; i++) {
+                        var href = links[i].getAttribute('href') || '';
                         var parts = href.split('/').filter(function(p) { return p; });
                         if (parts.length >= 4 && parts[0] === 'characters') {
-                            chars.push(parts[1].toUpperCase() + '/' + decodeURIComponent(parts[2]) + '/' + decodeURIComponent(parts[3]));
+                            var key = parts[1] + '/' + parts[2] + '/' + parts[3];
+                            if (!seen[key] && parts[3] !== 'compare') {
+                                seen[key] = true;
+                                chars.push(parts[1].toUpperCase() + '/' + decodeURIComponent(parts[2]) + '/' + decodeURIComponent(parts[3]));
+                            }
                         }
                     }
                     if (chars.length > 0) {

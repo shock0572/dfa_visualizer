@@ -177,8 +177,8 @@ html, body, #root {
 .rankings-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 12px 16px 8px;
+  gap: 6px;
+  padding: 8px 12px 8px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -188,8 +188,8 @@ html, body, #root {
 .rank-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: 6px;
+  padding: 8px 10px;
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -199,47 +199,46 @@ html, body, #root {
 }
 
 .rank-card .card-category {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--fg-dim);
   font-weight: 500;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .card-badges-row {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 
 .mini-badge {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 10px;
 }
 
 .mini-badge .mini-label {
   color: var(--fg-dim);
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .mini-badge .mini-value {
   background: var(--badge-bg);
   color: var(--badge-fg);
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .rank-card .card-value {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .rank-card .card-pct {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--fg-dim);
 }
 
