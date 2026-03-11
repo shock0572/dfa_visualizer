@@ -19,8 +19,19 @@ jobs:
       - id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-  build:
+  cleanup:
     needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Delete existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "v${{ needs.get-version.outputs.version }}" --yes --cleanup-tag 2>/dev/null || true
+
+  build:
+    needs: [get-version, cleanup]
     strategy:
       fail-fast: false
       matrix:
@@ -56,13 +67,6 @@ jobs:
 
       - name: Build frontend
         run: npm run build
-
-      - name: Delete existing release assets
-        if: matrix.platform == 'ubuntu-22.04'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete "v${{ needs.get-version.outputs.version }}" --yes --cleanup-tag 2>/dev/null || true
 
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v0.6
