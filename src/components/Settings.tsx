@@ -48,6 +48,36 @@ export function Settings({ onSaved, onCancel }: Props) {
     setNewChar({ ...newChar, realm: "", name: "" });
   };
 
+  const bulkImportParsed = () => {
+    const lines = bulkText.split(/\n+/).map((l) => l.trim()).filter((l) => l.includes("/"));
+    const newEntries: CharacterEntry[] = lines
+      .map((line) => {
+        const parts = line.split("/");
+        if (parts.length >= 3) {
+          return { region: parts[0], realm: parts[1], name: parts.slice(2).join("/") };
+        }
+        return null;
+      })
+      .filter(Boolean) as CharacterEntry[];
+
+    const existing = new Set(
+      config.extra_characters.map((c) => `${c.region}/${c.realm}/${c.name}`.toLowerCase())
+    );
+    const mainKey = `${config.region}/${config.realm}/${config.character}`.toLowerCase();
+    const filtered = newEntries.filter(
+      (e) => {
+        const key = `${e.region}/${e.realm}/${e.name}`.toLowerCase();
+        return !existing.has(key) && key !== mainKey;
+      }
+    );
+    setConfig({
+      ...config,
+      extra_characters: [...config.extra_characters, ...filtered],
+    });
+    setBulkText("");
+    setShowBulk(false);
+  };
+
   const bulkImport = () => {
     if (!bulkRealm.trim() || !bulkText.trim()) return;
     const names = bulkText
@@ -174,38 +204,32 @@ export function Settings({ onSaved, onCancel }: Props) {
         onClick={() => setShowBulk(!showBulk)}
         style={{ marginTop: 8, fontSize: 12, padding: "5px 12px" }}
       >
-        {showBulk ? "Hide Bulk Import" : "Bulk Import..."}
+        {showBulk ? "Hide Import" : "Import from DFA..."}
       </button>
 
       {showBulk && (
         <div className="bulk-import">
-          <div className="alt-add" style={{ marginTop: 8 }}>
-            <select
-              value={bulkRegion}
-              onChange={(e) => setBulkRegion(e.target.value)}
-              style={{ width: 60 }}
-            >
-              {REGIONS.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={bulkRealm}
-              onChange={(e) => setBulkRealm(e.target.value)}
-              placeholder="Realm (shared for all)"
-              style={{ flex: 1 }}
-            />
-          </div>
+          <p className="import-help">
+            1. Open <a href="https://www.dataforazeroth.com/mycharacters" target="_blank" rel="noreferrer">DFA My Characters</a> and log in<br/>
+            2. Press F12, go to Console, paste this and press Enter:
+          </p>
+          <code className="import-snippet" onClick={(e) => {
+            navigator.clipboard.writeText((e.target as HTMLElement).textContent || "");
+            setError("Copied to clipboard!");
+            setTimeout(() => setError(""), 2000);
+          }}>
+            {`copy(Array.from(document.querySelectorAll('a[href*="/characters/"]')).map(a=>{let m=a.href.match(/characters\\/([^\\/]+)\\/([^\\/]+)\\/([^\\/]+)/);return m?m[1].toUpperCase()+'/'+decodeURIComponent(m[2])+'/'+decodeURIComponent(m[3]):null}).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join('\\n'))`}
+          </code>
+          <p className="import-help">3. Paste the result below:</p>
           <textarea
             className="bulk-textarea"
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
-            placeholder={"Paste character names, one per line:\nSamarcanda\nBrianda\nAnimella\n..."}
+            placeholder={"EU/Silvermoon/Samarcanda\nEU/Silvermoon/Brianda\n..."}
             rows={6}
           />
-          <button className="btn btn-primary" onClick={bulkImport} style={{ fontSize: 12, padding: "5px 12px" }}>
-            Import {bulkText.split(/[\n,]+/).filter((n) => n.trim()).length} characters
+          <button className="btn btn-primary" onClick={bulkImportParsed} style={{ fontSize: 12, padding: "5px 12px" }}>
+            Import {bulkText.split(/\n+/).filter((n) => n.trim().includes("/")).length} characters
           </button>
         </div>
       )}

@@ -369,6 +369,39 @@ html, body, #root {
   margin-top: 8px;
 }
 
+.import-help {
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+  margin: 8px 0 4px;
+}
+
+.import-help a {
+  color: var(--accent);
+}
+
+.import-snippet {
+  display: block;
+  font-size: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--accent);
+  cursor: pointer;
+  word-break: break-all;
+  line-height: 1.4;
+  margin: 4px 0;
+}
+
+.import-snippet:hover {
+  border-color: var(--accent);
+}
+
+.import-snippet:active {
+  background: var(--bg-card-hover);
+}
+
 .bulk-textarea {
   width: 100%;
   margin-top: 8px;
