@@ -111,8 +111,10 @@ async fn open_dfa_login(
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        // Wait for mycharacters page
+        let mut on_mycharacters = false;
         for _ in 0..360 {
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
             let win = match app_handle.get_webview_window("dfa-login") {
                 Some(w) => w,
@@ -124,137 +126,164 @@ async fn open_dfa_login(
                 Err(_) => continue,
             };
 
-            if !url.contains("/mycharacters") {
-                continue;
+            if url.contains("/mycharacters") {
+                on_mycharacters = true;
+                break;
             }
+        }
 
-            // Wait for SPA content to render
-            tokio::time::sleep(tokio::time::Duration::from_secs(12)).await;
+        if !on_mycharacters {
+            return;
+        }
 
-            // Extract all character profile links from the page
-            let js = r#"
-                (function() {
-                    var links = document.querySelectorAll('a[href*="/characters/"]');
-                    var seen = {};
-                    var chars = [];
-                    for (var i = 0; i < links.length; i++) {
-                        var href = links[i].getAttribute('href') || '';
-                        var parts = href.split('/').filter(function(p) { return p; });
-                        if (parts.length >= 4 && parts[0] === 'characters') {
-                            var key = parts[1] + '/' + parts[2] + '/' + parts[3];
-                            if (!seen[key] && parts[3] !== 'compare') {
-                                seen[key] = true;
-                                chars.push(parts[1].toUpperCase() + '/' + decodeURIComponent(parts[2]) + '/' + decodeURIComponent(parts[3]));
-                            }
+        // Wait for the SPA to render the character table
+        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+
+        let win = match app_handle.get_webview_window("dfa-login") {
+            Some(w) => w,
+            None => return,
+        };
+
+        // Try extraction multiple times
+        let extract_js = r#"
+            (function() {
+                var links = document.querySelectorAll('a[href*="/characters/"]');
+                var seen = {};
+                var chars = [];
+                for (var i = 0; i < links.length; i++) {
+                    var href = links[i].getAttribute('href') || '';
+                    var m = href.match(/^\/characters\/([^\/]+)\/([^\/]+)\/([^\/]+)/);
+                    if (m && m[3] !== 'compare') {
+                        var key = m[1] + '/' + m[2] + '/' + m[3];
+                        if (!seen[key]) {
+                            seen[key] = true;
+                            chars.push(m[1].toUpperCase() + '/' + decodeURIComponent(m[2]) + '/' + decodeURIComponent(m[3]));
                         }
                     }
-                    if (chars.length > 0) {
-                        document.title = 'DFA_CHARS:' + chars.join('|');
-                    }
-                })()
-            "#;
+                }
+                if (chars.length > 0) {
+                    document.title = 'DFA_CHARS:' + chars.join('|');
+                } else {
+                    document.title = 'DFA_NONE';
+                }
+            })()
+        "#;
 
-            if win.eval(js).is_err() {
-                continue;
+        let mut entries: Vec<config::CharacterEntry> = Vec::new();
+
+        for attempt in 0..10 {
+            if attempt > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             }
 
+            let w = match app_handle.get_webview_window("dfa-login") {
+                Some(w) => w,
+                None => return,
+            };
+
+            let _ = w.eval(extract_js);
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-            let title = match win.title() {
+            let title = match w.title() {
                 Ok(t) => t,
                 Err(_) => continue,
             };
 
-            if !title.starts_with("DFA_CHARS:") {
-                continue;
-            }
+            eprintln!("DFA import attempt {attempt}: title={title}");
 
-            let data = &title["DFA_CHARS:".len()..];
-            let entries: Vec<config::CharacterEntry> = data
-                .split('|')
-                .filter_map(|s| {
-                    let parts: Vec<&str> = s.splitn(3, '/').collect();
-                    if parts.len() == 3 {
-                        Some(config::CharacterEntry {
-                            region: parts[0].to_string(),
-                            realm: parts[1].to_string(),
-                            name: parts[2].to_string(),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if entries.is_empty() {
-                continue;
-            }
-
-            // Save to config
-            let mut cfg = state_arc.config.lock().await.clone();
-            let main_key = format!(
-                "{}/{}/{}",
-                cfg.region.to_lowercase(),
-                cfg.realm.to_lowercase(),
-                cfg.character.to_lowercase()
-            );
-
-            let extras: Vec<config::CharacterEntry> = entries
-                .into_iter()
-                .filter(|c| {
-                    let key = format!(
-                        "{}/{}/{}",
-                        c.region.to_lowercase(),
-                        c.realm.to_lowercase(),
-                        c.name.to_lowercase()
-                    );
-                    key != main_key
-                })
-                .collect();
-
-            let count = extras.len();
-            cfg.extra_characters = extras;
-            let _ = config::save_config(&cfg);
-            *state_arc.config.lock().await = cfg;
-
-            let _ = app_handle.emit("characters-imported", count);
-
-            // Close login window
-            let _ = win.close();
-
-            // Start watching for update completion
-            let config = state_arc.config.lock().await.clone();
-            let old_ts = state_arc
-                .profile
-                .lock()
-                .await
-                .as_ref()
-                .map(|p| p.updated_at)
-                .unwrap_or(0);
-
-            let state2 = state_arc.clone();
-            let app2 = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                for _ in 0..120 {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-                    if let Ok(new_ts) = api::fetch_updated_timestamp(
-                        &config.region, &config.realm, &config.character,
-                    ).await {
-                        if new_ts != old_ts && old_ts != 0 {
-                            let profile = api::fetch_profile(
-                                &config.region, &config.realm, &config.character,
-                            ).await;
-                            *state2.profile.lock().await = Some(profile.clone());
-                            let _ = app2.emit("profile-updated", &profile);
-                            let _ = app2.emit("update-status", "done");
-                            return;
+            if let Some(data) = title.strip_prefix("DFA_CHARS:") {
+                entries = data
+                    .split('|')
+                    .filter_map(|s| {
+                        let parts: Vec<&str> = s.splitn(3, '/').collect();
+                        if parts.len() == 3 {
+                            Some(config::CharacterEntry {
+                                region: parts[0].to_string(),
+                                realm: parts[1].to_string(),
+                                name: parts[2].to_string(),
+                            })
+                        } else {
+                            None
                         }
-                    }
-                }
-            });
+                    })
+                    .collect();
 
+                if !entries.is_empty() {
+                    break;
+                }
+            }
+        }
+
+        if entries.is_empty() {
+            eprintln!("DFA import: no characters found after 10 attempts");
             return;
         }
+
+        // Save to config
+        let mut cfg = state_arc.config.lock().await.clone();
+        let main_key = format!(
+            "{}/{}/{}",
+            cfg.region.to_lowercase(),
+            cfg.realm.to_lowercase(),
+            cfg.character.to_lowercase()
+        );
+
+        let extras: Vec<config::CharacterEntry> = entries
+            .into_iter()
+            .filter(|c| {
+                let key = format!(
+                    "{}/{}/{}",
+                    c.region.to_lowercase(),
+                    c.realm.to_lowercase(),
+                    c.name.to_lowercase()
+                );
+                key != main_key
+            })
+            .collect();
+
+        let count = extras.len();
+        cfg.extra_characters = extras;
+        let _ = config::save_config(&cfg);
+        *state_arc.config.lock().await = cfg;
+
+        let _ = app_handle.emit("characters-imported", count);
+        eprintln!("DFA import: saved {count} characters");
+
+        // Close login window
+        if let Some(w) = app_handle.get_webview_window("dfa-login") {
+            let _ = w.close();
+        }
+
+        // Start watching for update completion
+        let config = state_arc.config.lock().await.clone();
+        let old_ts = state_arc
+            .profile
+            .lock()
+            .await
+            .as_ref()
+            .map(|p| p.updated_at)
+            .unwrap_or(0);
+
+        let state2 = state_arc.clone();
+        let app2 = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            for _ in 0..120 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+                if let Ok(new_ts) = api::fetch_updated_timestamp(
+                    &config.region, &config.realm, &config.character,
+                ).await {
+                    if new_ts != old_ts && old_ts != 0 {
+                        let profile = api::fetch_profile(
+                            &config.region, &config.realm, &config.character,
+                        ).await;
+                        *state2.profile.lock().await = Some(profile.clone());
+                        let _ = app2.emit("profile-updated", &profile);
+                        let _ = app2.emit("update-status", "done");
+                        return;
+                    }
+                }
+            }
+        });
     });
 
     Ok(())
