@@ -197,24 +197,17 @@ html, body, #root {
   border-color: var(--accent);
 }
 
-.rank-card .card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
 .rank-card .card-category {
   font-size: 11px;
   color: var(--fg-dim);
   font-weight: 500;
+  margin-bottom: 4px;
 }
 
-.rank-card .card-badges {
+.card-badges-row {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .mini-badge {

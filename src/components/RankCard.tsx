@@ -13,16 +13,14 @@ export function RankCard({ rank }: Props) {
 
   return (
     <div className="rank-card">
-      <div className="card-top">
-        <span className="card-category">{rank.category}</span>
-        <div className="card-badges">
-          {badges.map((b) => (
-            <span key={b.label} className="mini-badge">
-              <span className="mini-label">{b.label}</span>
-              <span className="mini-value">{b.value}</span>
-            </span>
-          ))}
-        </div>
+      <div className="card-category">{rank.category}</div>
+      <div className="card-badges-row">
+        {badges.map((b) => (
+          <span key={b.label} className="mini-badge">
+            <span className="mini-label">{b.label}</span>
+            <span className="mini-value">{b.value}</span>
+          </span>
+        ))}
       </div>
       <div className="card-value">{rank.value || "—"}</div>
       {rank.percentage && <div className="card-pct">{rank.percentage}</div>}
