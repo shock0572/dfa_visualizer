@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { AppConfig, CharacterEntry } from "../types";
 import { loadSettings, saveSettings, getAllCategories } from "../api";
 
@@ -15,6 +15,10 @@ export function Settings({ onSaved, onCancel }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [newChar, setNewChar] = useState<CharacterEntry>({ region: "EU", realm: "", name: "" });
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkRegion, setBulkRegion] = useState("EU");
+  const [bulkRealm, setBulkRealm] = useState("");
 
   useEffect(() => {
     Promise.all([loadSettings(), getAllCategories()]).then(([cfg, cats]) => {
@@ -42,6 +46,31 @@ export function Settings({ onSaved, onCancel }: Props) {
       extra_characters: [...config.extra_characters, { ...newChar }],
     });
     setNewChar({ ...newChar, realm: "", name: "" });
+  };
+
+  const bulkImport = () => {
+    if (!bulkRealm.trim() || !bulkText.trim()) return;
+    const names = bulkText
+      .split(/[\n,]+/)
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    const newEntries: CharacterEntry[] = names.map((name) => ({
+      region: bulkRegion,
+      realm: bulkRealm.trim(),
+      name,
+    }));
+    const existing = new Set(
+      config.extra_characters.map((c) => `${c.region}/${c.realm}/${c.name}`.toLowerCase())
+    );
+    const filtered = newEntries.filter(
+      (e) => !existing.has(`${e.region}/${e.realm}/${e.name}`.toLowerCase())
+    );
+    setConfig({
+      ...config,
+      extra_characters: [...config.extra_characters, ...filtered],
+    });
+    setBulkText("");
+    setShowBulk(false);
   };
 
   const removeCharacter = (i: number) => {
@@ -139,6 +168,47 @@ export function Settings({ onSaved, onCancel }: Props) {
         />
         <button className="btn btn-primary" onClick={addCharacter} style={{ padding: "6px 12px" }}>+</button>
       </div>
+
+      <button
+        className="btn btn-secondary"
+        onClick={() => setShowBulk(!showBulk)}
+        style={{ marginTop: 8, fontSize: 12, padding: "5px 12px" }}
+      >
+        {showBulk ? "Hide Bulk Import" : "Bulk Import..."}
+      </button>
+
+      {showBulk && (
+        <div className="bulk-import">
+          <div className="alt-add" style={{ marginTop: 8 }}>
+            <select
+              value={bulkRegion}
+              onChange={(e) => setBulkRegion(e.target.value)}
+              style={{ width: 60 }}
+            >
+              {REGIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={bulkRealm}
+              onChange={(e) => setBulkRealm(e.target.value)}
+              placeholder="Realm (shared for all)"
+              style={{ flex: 1 }}
+            />
+          </div>
+          <textarea
+            className="bulk-textarea"
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            placeholder={"Paste character names, one per line:\nSamarcanda\nBrianda\nAnimella\n..."}
+            rows={6}
+          />
+          <button className="btn btn-primary" onClick={bulkImport} style={{ fontSize: 12, padding: "5px 12px" }}>
+            Import {bulkText.split(/[\n,]+/).filter((n) => n.trim()).length} characters
+          </button>
+        </div>
+      )}
 
       <hr className="divider" />
       <h2>Tracked Rankings</h2>
