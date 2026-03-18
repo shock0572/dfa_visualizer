@@ -61,21 +61,16 @@ async fn fetch_all_characters(
         return Err("Profile not configured".into());
     }
 
-    let mut chars = vec![config::CharacterEntry {
-        region: config.region.clone(),
-        realm: config.realm.clone(),
-        name: config.character.clone(),
-    }];
-    chars.extend(config.extra_characters.iter().cloned());
-
-    let mut results = Vec::new();
-    for entry in &chars {
-        match api::fetch_character_summary(&entry.region, &entry.realm, &entry.name).await {
-            Ok(summary) => results.push(summary),
-            Err(e) => eprintln!("Failed to fetch {}: {e}", entry.name),
-        }
+    let mut entries = vec![(
+        config.region.clone(),
+        config.realm.clone(),
+        config.character.clone(),
+    )];
+    for ch in &config.extra_characters {
+        entries.push((ch.region.clone(), ch.realm.clone(), ch.name.clone()));
     }
-    Ok(results)
+
+    Ok(api::fetch_characters_batch(&entries).await)
 }
 
 #[tauri::command]

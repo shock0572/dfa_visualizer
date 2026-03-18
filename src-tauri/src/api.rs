@@ -65,6 +65,7 @@ pub struct CharacterSummary {
     pub level: u32,
     pub item_level: u32,
     pub guild: String,
+    pub professions: Vec<String>,
     pub thumbnail: String,
 }
 
@@ -323,39 +324,100 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     profile
 }
 
-pub async fn fetch_character_summary(region: &str, realm: &str, character: &str) -> Result<CharacterSummary, String> {
-    let client = reqwest::Client::builder()
+const PRIMARY_PROFESSIONS: &[&str] = &[
+    "alchemy", "blacksmithing", "enchanting", "engineering",
+    "herbalism", "inscription", "jewelcrafting", "leatherworking",
+    "mining", "skinning", "tailoring",
+];
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+pub async fn fetch_characters_batch(
+    entries: &[(String, String, String)],
+) -> Vec<CharacterSummary> {
+    let client = match reqwest::Client::builder()
         .default_headers(build_headers())
         .build()
-        .map_err(|e| e.to_string())?;
-
-    let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let data: CharacterResponse = resp.json().await.map_err(|e| e.to_string())?;
-    let info = data.character.ok_or("No character data")?;
-
-    let region_lower = region.to_lowercase();
-    let thumb = info.thumbnail.unwrap_or_default();
-    let thumbnail = if thumb.is_empty() {
-        String::new()
-    } else {
-        format!("https://render.worldofwarcraft.com/{region_lower}/character/{thumb}")
+    {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
     };
 
-    Ok(CharacterSummary {
-        name: info.name.unwrap_or_default(),
-        realm: info.realm.unwrap_or_default(),
-        region: region.to_uppercase(),
-        class_name: class_name(info.class.unwrap_or(0)).to_string(),
-        race_name: race_name(info.race.unwrap_or(0)).to_string(),
-        level: info.level.unwrap_or(0) as u32,
-        item_level: info.average_item_level.unwrap_or(0) as u32,
-        guild: info.guild_name.unwrap_or_default(),
-        thumbnail,
-    })
+    let stubs_body: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(region, realm, name)| {
+            serde_json::json!({
+                "region": region,
+                "realm": realm,
+                "character": name
+            })
+        })
+        .collect();
+
+    let url = format!("{API_BASE}/stubs");
+    let resp = match client.post(&url).json(&stubs_body).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Stubs request failed: {e}");
+            return Vec::new();
+        }
+    };
+
+    let stubs: Vec<serde_json::Value> = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Stubs parse failed: {e}");
+            return Vec::new();
+        }
+    };
+
+    let mut results = Vec::new();
+    for (i, stub) in stubs.iter().enumerate() {
+        let ch = match stub.get("character") {
+            Some(c) => c,
+            None => continue,
+        };
+
+        let region = entries.get(i).map(|e| e.0.as_str()).unwrap_or("EU");
+        let region_lower = region.to_lowercase();
+
+        let thumb = ch.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
+        let thumbnail = if thumb.is_empty() {
+            String::new()
+        } else {
+            format!("https://render.worldofwarcraft.com/{region_lower}/character/{thumb}")
+        };
+
+        let mut professions = Vec::new();
+        if let Some(profs) = ch.get("professions").and_then(|v| v.as_object()) {
+            for &prof_name in PRIMARY_PROFESSIONS {
+                if profs.contains_key(prof_name) {
+                    professions.push(capitalize(prof_name));
+                }
+            }
+        }
+
+        results.push(CharacterSummary {
+            name: ch.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            realm: ch.get("realm").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            region: region.to_uppercase(),
+            class_name: class_name(ch.get("class").and_then(|v| v.as_u64()).unwrap_or(0)).to_string(),
+            race_name: race_name(ch.get("race").and_then(|v| v.as_u64()).unwrap_or(0)).to_string(),
+            level: ch.get("level").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            item_level: ch.get("averageItemLevel").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            guild: ch.get("guildName").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            professions,
+            thumbnail,
+        });
+    }
+
+    results
 }
 
 pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {

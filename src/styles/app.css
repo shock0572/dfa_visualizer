@@ -268,8 +268,8 @@ html, body, #root {
 }
 
 .char-avatar {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 4px;
   flex-shrink: 0;
 }
@@ -287,16 +287,16 @@ html, body, #root {
 
 .char-row-name {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .char-row-level {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-dim);
 }
 
 .char-row-ilvl {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
   margin-left: auto;
 }
@@ -306,7 +306,7 @@ html, body, #root {
 }
 
 .char-row-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-dim);
 }
 

@@ -95,6 +95,7 @@ export function Overview({ profile }: Props) {
                   <span className="char-row-meta">
                     {ch.race_name} {ch.class_name}
                     {ch.guild && <> &middot; &lt;{ch.guild}&gt;</>}
+                    {ch.professions.length > 0 && <> &middot; {ch.professions.join(", ")}</>}
                   </span>
                 </div>
               </div>
