@@ -89,8 +89,8 @@ fn show_window(app: &AppHandle) {
 }
 
 fn position_at_click(window: &tauri::WebviewWindow, click_pos: tauri::PhysicalPosition<f64>) {
-    let win_w = 420;
-    let win_h = 560;
+    let win_w = 460;
+    let win_h = 580;
 
     let cx = click_pos.x as i32;
     let cy = click_pos.y as i32;
@@ -113,8 +113,8 @@ fn position_at_click(window: &tauri::WebviewWindow, click_pos: tauri::PhysicalPo
 
 fn position_default(window: &tauri::WebviewWindow) {
     let scale = window.scale_factor().unwrap_or(1.0);
-    let win_w = (420.0 * scale) as i32;
-    let win_h = (560.0 * scale) as i32;
+    let win_w = (460.0 * scale) as i32;
+    let win_h = (580.0 * scale) as i32;
 
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let screen = monitor.size();
