@@ -112,14 +112,6 @@ struct CharacterInfo {
     name: Option<String>,
     realm: Option<String>,
     updated: Option<u64>,
-    class: Option<u64>,
-    race: Option<u64>,
-    level: Option<u64>,
-    #[serde(rename = "averageItemLevel")]
-    average_item_level: Option<u64>,
-    #[serde(rename = "guildName")]
-    guild_name: Option<String>,
-    thumbnail: Option<String>,
 }
 
 #[derive(Deserialize)]
