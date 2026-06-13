@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-const API_BASE: &str = "https://api.dataforazeroth.com";
+const API_BASE: &str = "https://www.dataforazeroth.com/api";
 const SITE_BASE: &str = "https://www.dataforazeroth.com";
 
 const RANKING_KEYS: &[(&str, &str)] = &[
@@ -221,6 +221,8 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     };
 
     let client = client();
+    // The API expects a lowercase region slug in the path (e.g. "eu", not "EU").
+    let region = region.to_lowercase();
 
     // 1 & 2. Max values (for percentages) and character data are independent,
     // so fetch them concurrently.
@@ -368,7 +370,7 @@ pub async fn fetch_characters_batch(
         .iter()
         .map(|(region, realm, name)| {
             serde_json::json!({
-                "region": region,
+                "region": region.to_lowercase(),
                 "realm": realm,
                 "character": name
             })
@@ -436,6 +438,7 @@ pub async fn fetch_characters_batch(
 }
 
 pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {
+    let region = region.to_lowercase();
     let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
     let resp = client().get(&url).send().await.map_err(|e| full_chain(&e))?;
     if !resp.status().is_success() {
@@ -448,15 +451,17 @@ pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str)
 }
 
 async fn fetch_max_values(client: &reqwest::Client) -> Result<HashMap<String, f64>, String> {
-    let version_url = format!("{API_BASE}/version");
-    let version_resp = client
-        .get(&version_url)
+    // The dynamic index maps each dataset name to its current hashed JSON file;
+    // its "max" entry points to the per-stat maximum values used for percentages.
+    let index_url = format!("{SITE_BASE}/dynamic/index.json");
+    let index_resp = client
+        .get(&index_url)
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    let version_data: VersionResponse = version_resp.json().await.map_err(|e| e.to_string())?;
+    let index_data: VersionResponse = index_resp.json().await.map_err(|e| e.to_string())?;
 
-    let max_path = version_data.max.ok_or("No max URL in version")?;
+    let max_path = index_data.max.ok_or("No max URL in dynamic index")?;
     let max_url = format!("{SITE_BASE}{max_path}");
     let max_resp = client
         .get(&max_url)
