@@ -14,7 +14,7 @@ serde_json = "1"
 reqwest = { version = "0.13", features = ["json", "query", "rustls"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 dirs = "6"
-sysinfo = "0.35"
+sysinfo = "0.38"
 
 [profile.release]
 strip = true
