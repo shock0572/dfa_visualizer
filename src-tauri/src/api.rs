@@ -1,6 +1,8 @@
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ORIGIN, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 const API_BASE: &str = "https://api.dataforazeroth.com";
 const SITE_BASE: &str = "https://www.dataforazeroth.com";
@@ -144,6 +146,42 @@ fn build_headers() -> HeaderMap {
     headers
 }
 
+/// Format an error together with its full `source()` chain.
+///
+/// reqwest's `Display` only prints its own top-level message (e.g. "error
+/// sending request for url (...)") and omits the underlying cause, so a
+/// transport failure like a connection reset, TLS error, DNS failure or a
+/// failed redirect is invisible. Walking the chain surfaces the real reason.
+fn full_chain(err: &dyn std::error::Error) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        msg.push_str(&format!(" — caused by: {e}"));
+        source = e.source();
+    }
+    msg
+}
+
+/// Shared HTTP client.
+///
+/// Building a `reqwest::Client` is expensive (TLS config + root cert loading)
+/// and each client owns its own connection pool, so building one per request
+/// meant a fresh TLS handshake every time and no keep-alive reuse — especially
+/// wasteful for the 30s watcher loops. A single shared client (cheap to clone,
+/// `Arc` internally) pools and reuses connections across all calls. Timeouts
+/// also ensure a stalled connection fails fast instead of hanging forever.
+fn client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .default_headers(build_headers())
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .expect("failed to build shared HTTP client")
+    })
+}
+
 fn format_rank(raw: i64) -> String {
     let val = raw.unsigned_abs();
     let formatted = format_number(val);
@@ -182,29 +220,20 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         ..Default::default()
     };
 
-    let client = match reqwest::Client::builder()
-        .default_headers(build_headers())
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            profile.error = format!("Failed to build HTTP client: {e}");
-            return profile;
-        }
-    };
+    let client = client();
 
-    // 1. Fetch max values for percentage calculation
-    let max_values: HashMap<String, f64> = match fetch_max_values(&client).await {
-        Ok(m) => m,
-        Err(_) => HashMap::new(),
-    };
-
-    // 2. Fetch character data
+    // 1 & 2. Max values (for percentages) and character data are independent,
+    // so fetch them concurrently.
     let char_url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
-    let char_resp = match client.get(&char_url).send().await {
+    let (max_values_res, char_resp_res) =
+        tokio::join!(fetch_max_values(client), client.get(&char_url).send());
+
+    let max_values: HashMap<String, f64> = max_values_res.unwrap_or_default();
+
+    let char_resp = match char_resp_res {
         Ok(r) => r,
         Err(e) => {
-            profile.error = format!("Failed to fetch character: {e}");
+            profile.error = format!("Failed to fetch character: {}", full_chain(&e));
             return profile;
         }
     };
@@ -257,7 +286,7 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     let rank_resp = match client.get(&ranking_url).query(&ranking_params).send().await {
         Ok(r) => r,
         Err(e) => {
-            profile.error = format!("Failed to fetch rankings: {e}");
+            profile.error = format!("Failed to fetch rankings: {}", full_chain(&e));
             return profile;
         }
     };
@@ -333,13 +362,7 @@ fn capitalize(s: &str) -> String {
 pub async fn fetch_characters_batch(
     entries: &[(String, String, String)],
 ) -> Vec<CharacterSummary> {
-    let client = match reqwest::Client::builder()
-        .default_headers(build_headers())
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
+    let client = client();
 
     let stubs_body: Vec<serde_json::Value> = entries
         .iter()
@@ -356,7 +379,7 @@ pub async fn fetch_characters_batch(
     let resp = match client.post(&url).json(&stubs_body).send().await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Stubs request failed: {e}");
+            eprintln!("Stubs request failed: {}", full_chain(&e));
             return Vec::new();
         }
     };
@@ -413,13 +436,8 @@ pub async fn fetch_characters_batch(
 }
 
 pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {
-    let client = reqwest::Client::builder()
-        .default_headers(build_headers())
-        .build()
-        .map_err(|e| e.to_string())?;
-
     let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let resp = client().get(&url).send().await.map_err(|e| full_chain(&e))?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
