@@ -107,6 +107,7 @@ struct VersionResponse {
 struct CharacterResponse {
     character: Option<CharacterInfo>,
     scores: Option<HashMap<String, serde_json::Value>>,
+    rankings: Option<HashMap<String, RankEntry>>,
 }
 
 #[derive(Deserialize)]
@@ -273,35 +274,18 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         }
     };
 
-    // 3. Build ranking query params
-    let mut ranking_params: Vec<(String, String)> = Vec::new();
-    for (api_key, _) in RANKING_KEYS {
-        if let Some(val) = scores.get(*api_key) {
-            if let Some(n) = val.as_f64() {
-                ranking_params.push((api_key.to_string(), (n as i64).to_string()));
-            }
-        }
-    }
-
-    // 4. Fetch rankings
-    let ranking_url = format!("{API_BASE}/rankings/{region}/{realm}");
-    let rank_resp = match client.get(&ranking_url).query(&ranking_params).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            profile.error = format!("Failed to fetch rankings: {}", full_chain(&e));
+    // Rankings are returned alongside scores by the character endpoint. The
+    // former /rankings/{region}/{realm} endpoint now falls through to the
+    // website SPA and returns HTML instead of JSON.
+    let rank_data = match char_data.rankings {
+        Some(r) => r,
+        None => {
+            profile.error = "No rankings data in response".into();
             return profile;
         }
     };
 
-    let rank_data: HashMap<String, RankEntry> = match rank_resp.json().await {
-        Ok(d) => d,
-        Err(e) => {
-            profile.error = format!("Failed to parse rankings: {e}");
-            return profile;
-        }
-    };
-
-    // 5. Build RankInfo objects
+    // 3. Build RankInfo objects
     for (api_key, display_name) in RANKING_KEYS {
         let score_val = match scores.get(*api_key).and_then(|v| v.as_f64()) {
             Some(v) => v,
