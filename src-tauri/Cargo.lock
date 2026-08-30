@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "dfa-visualizer"
-version = "1.8.4"
+version = "1.8.5"
 dependencies = [
  "dirs",
  "reqwest",

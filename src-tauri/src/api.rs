@@ -1,8 +1,10 @@
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ORIGIN, REFERER, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, COOKIE, ORIGIN, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const API_BASE: &str = "https://www.dataforazeroth.com/api";
 const SITE_BASE: &str = "https://www.dataforazeroth.com";
@@ -183,6 +185,36 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
+/// Mint the bot-check cookie every request has to carry.
+///
+/// The site now puts all traffic behind an interstitial that answers **HTTP 405
+/// Method Not Allowed** with a "please check the box" HTML page unless the
+/// request presents a `dfa-captcha` cookie — which is why every call started
+/// failing at once, including plain static files like `/dynamic/index.json`.
+/// The interstitial's own script mints the value entirely client-side as
+/// `"token-dfa-" + Date.now() + Math.random()` and keeps it for a week, so we
+/// mint an equivalent one here. Doing it per request rather than caching one
+/// alongside the shared client means a tray session left running for more than
+/// seven days can't quietly start serving an expired token.
+fn captcha_cookie() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    // Stands in for `Math.random()`; RandomState is seeded per instance, which
+    // is random enough for a nonce and avoids pulling in a `rand` dependency.
+    let nonce = RandomState::new().build_hasher().finish();
+    format!("dfa-captcha=token-dfa-{millis}0.{nonce}")
+}
+
+fn get(url: &str) -> reqwest::RequestBuilder {
+    client().get(url).header(COOKIE, captcha_cookie())
+}
+
+fn post(url: &str) -> reqwest::RequestBuilder {
+    client().post(url).header(COOKIE, captcha_cookie())
+}
+
 fn format_rank(raw: i64) -> String {
     let val = raw.unsigned_abs();
     let formatted = format_number(val);
@@ -221,7 +253,6 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         ..Default::default()
     };
 
-    let client = client();
     // The API expects a lowercase region slug in the path (e.g. "eu", not "EU").
     let region = region.to_lowercase();
 
@@ -229,7 +260,7 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     // so fetch them concurrently.
     let char_url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
     let (max_values_res, char_resp_res) =
-        tokio::join!(fetch_max_values(client), client.get(&char_url).send());
+        tokio::join!(fetch_max_values(), get(&char_url).send());
 
     let max_values: HashMap<String, f64> = max_values_res.unwrap_or_default();
 
@@ -348,8 +379,6 @@ fn capitalize(s: &str) -> String {
 pub async fn fetch_characters_batch(
     entries: &[(String, String, String)],
 ) -> Vec<CharacterSummary> {
-    let client = client();
-
     let stubs_body: Vec<serde_json::Value> = entries
         .iter()
         .map(|(region, realm, name)| {
@@ -362,7 +391,7 @@ pub async fn fetch_characters_batch(
         .collect();
 
     let url = format!("{API_BASE}/stubs");
-    let resp = match client.post(&url).json(&stubs_body).send().await {
+    let resp = match post(&url).json(&stubs_body).send().await {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Stubs request failed: {}", full_chain(&e));
@@ -424,7 +453,7 @@ pub async fn fetch_characters_batch(
 pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {
     let region = region.to_lowercase();
     let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
-    let resp = client().get(&url).send().await.map_err(|e| full_chain(&e))?;
+    let resp = get(&url).send().await.map_err(|e| full_chain(&e))?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
@@ -434,24 +463,16 @@ pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str)
         .ok_or_else(|| "No updated timestamp".into())
 }
 
-async fn fetch_max_values(client: &reqwest::Client) -> Result<HashMap<String, f64>, String> {
+async fn fetch_max_values() -> Result<HashMap<String, f64>, String> {
     // The dynamic index maps each dataset name to its current hashed JSON file;
     // its "max" entry points to the per-stat maximum values used for percentages.
     let index_url = format!("{SITE_BASE}/dynamic/index.json");
-    let index_resp = client
-        .get(&index_url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let index_resp = get(&index_url).send().await.map_err(|e| e.to_string())?;
     let index_data: VersionResponse = index_resp.json().await.map_err(|e| e.to_string())?;
 
     let max_path = index_data.max.ok_or("No max URL in dynamic index")?;
     let max_url = format!("{SITE_BASE}{max_path}");
-    let max_resp = client
-        .get(&max_url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let max_resp = get(&max_url).send().await.map_err(|e| e.to_string())?;
     let max_data: HashMap<String, serde_json::Value> =
         max_resp.json().await.map_err(|e| e.to_string())?;
 
@@ -463,3 +484,4 @@ async fn fetch_max_values(client: &reqwest::Client) -> Result<HashMap<String, f6
     }
     Ok(result)
 }
+
