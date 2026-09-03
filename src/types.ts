@@ -36,6 +36,8 @@ export interface CharacterSummary {
   guild: string;
   professions: string[];
   thumbnail: string;
+  /** Epoch millis of the character's last DFA refresh (0 when unknown). */
+  updated: number;
 }
 
 export interface AppConfig {

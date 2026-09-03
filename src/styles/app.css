@@ -310,6 +310,13 @@ html, body, #root {
   color: var(--fg-dim);
 }
 
+.char-row-updated {
+  font-size: 11px;
+  color: var(--fg-dim);
+  opacity: 0.75;
+  margin-top: 1px;
+}
+
 .char-row-profs {
   display: flex;
   gap: 4px;

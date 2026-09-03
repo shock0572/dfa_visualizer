@@ -22,6 +22,18 @@ const CLASS_COLORS: Record<string, string> = {
   "Evoker": "#33937F",
 };
 
+/** "Refreshed 3h ago" style label for a DFA update timestamp in epoch millis. */
+function refreshedLabel(updated: number): string {
+  if (!updated) return "Never refreshed";
+  const mins = Math.floor((Date.now() - updated) / 60000);
+  if (mins < 1) return "Refreshed just now";
+  if (mins < 60) return `Refreshed ${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Refreshed ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Refreshed ${days}d ago`;
+}
+
 export function Overview({ profile }: Props) {
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [loadingChars, setLoadingChars] = useState(true);
@@ -98,6 +110,7 @@ export function Overview({ profile }: Props) {
                     {ch.professions.length > 0 && <> &middot; {ch.professions.join(", ")}</>}
                   </span>
                 </div>
+                <div className="char-row-updated">{refreshedLabel(ch.updated)}</div>
               </div>
             </div>
           ))

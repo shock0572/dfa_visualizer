@@ -71,6 +71,8 @@ pub struct CharacterSummary {
     pub guild: String,
     pub professions: Vec<String>,
     pub thumbnail: String,
+    /// Epoch millis of the character's last DFA refresh (0 when unknown).
+    pub updated: u64,
 }
 
 fn class_name(id: u64) -> &'static str {
@@ -444,6 +446,7 @@ pub async fn fetch_characters_batch(
             guild: ch.get("guildName").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             professions,
             thumbnail,
+            updated: ch.get("updated").and_then(|v| v.as_u64()).unwrap_or(0),
         });
     }
 
