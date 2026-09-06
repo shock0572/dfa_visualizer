@@ -107,8 +107,8 @@ pub fn save_config(cfg: &AppConfig) -> Result<(), String> {
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("Failed to create config dir: {e}"))?;
 
-    let json =
-        serde_json::to_string_pretty(cfg).map_err(|e| format!("Failed to serialize config: {e}"))?;
+    let json = serde_json::to_string_pretty(cfg)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
 
     fs::write(config_path(), json).map_err(|e| format!("Failed to write config: {e}"))?;
 

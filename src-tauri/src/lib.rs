@@ -9,9 +9,7 @@ use tokio::sync::Mutex;
 use tray::AppState;
 
 #[tauri::command]
-async fn fetch_profile(
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<ProfileData, String> {
+async fn fetch_profile(state: tauri::State<'_, Arc<AppState>>) -> Result<ProfileData, String> {
     let config = state.config.lock().await.clone();
     if !config.is_configured() {
         return Err("Profile not configured".into());
@@ -29,9 +27,7 @@ async fn get_profile(
 }
 
 #[tauri::command]
-async fn load_settings(
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<AppConfig, String> {
+async fn load_settings(state: tauri::State<'_, Arc<AppState>>) -> Result<AppConfig, String> {
     Ok(state.config.lock().await.clone())
 }
 
@@ -49,7 +45,10 @@ async fn save_settings(
 
 #[tauri::command]
 fn get_all_categories() -> Vec<String> {
-    config::ALL_CATEGORIES.iter().map(|s| s.to_string()).collect()
+    config::ALL_CATEGORIES
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 #[tauri::command]
@@ -78,7 +77,7 @@ async fn open_dfa_update(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use tauri::{Emitter};
+    use tauri::Emitter;
 
     let config = state.config.lock().await.clone();
     if !config.is_configured() {
@@ -86,7 +85,10 @@ async fn open_dfa_update(
     }
 
     // Open browser for login/update
-    let _ = app.emit("open-browser", "https://www.dataforazeroth.com/mycharacters");
+    let _ = app.emit(
+        "open-browser",
+        "https://www.dataforazeroth.com/mycharacters",
+    );
 
     // Start watching for update completion in background
     let old_ts = state
@@ -101,18 +103,17 @@ async fn open_dfa_update(
     tauri::async_runtime::spawn(async move {
         for _ in 0..120 {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-            if let Ok(new_ts) = api::fetch_updated_timestamp(
-                &config.region, &config.realm, &config.character,
-            ).await {
-                if new_ts != old_ts && old_ts != 0 {
-                    let profile = api::fetch_profile(
-                        &config.region, &config.realm, &config.character,
-                    ).await;
-                    *state_arc.profile.lock().await = Some(profile.clone());
-                    let _ = app.emit("profile-updated", &profile);
-                    let _ = app.emit("update-status", "done");
-                    return;
-                }
+            if let Ok(new_ts) =
+                api::fetch_updated_timestamp(&config.region, &config.realm, &config.character).await
+                && new_ts != old_ts
+                && old_ts != 0
+            {
+                let profile =
+                    api::fetch_profile(&config.region, &config.realm, &config.character).await;
+                *state_arc.profile.lock().await = Some(profile.clone());
+                let _ = app.emit("profile-updated", &profile);
+                let _ = app.emit("update-status", "done");
+                return;
             }
         }
     });
@@ -146,26 +147,19 @@ async fn start_update_watch(
         for _ in 0..120 {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
-            let ok = api::fetch_updated_timestamp(
-                &config.region,
-                &config.realm,
-                &config.character,
-            )
-            .await;
+            let ok = api::fetch_updated_timestamp(&config.region, &config.realm, &config.character)
+                .await;
 
-            if let Ok(new_ts) = ok {
-                if new_ts != old_ts && old_ts != 0 {
-                    let profile = api::fetch_profile(
-                        &config.region,
-                        &config.realm,
-                        &config.character,
-                    )
-                    .await;
-                    *state_arc.profile.lock().await = Some(profile.clone());
-                    let _ = app.emit("profile-updated", &profile);
-                    let _ = app.emit("update-status", "done");
-                    return;
-                }
+            if let Ok(new_ts) = ok
+                && new_ts != old_ts
+                && old_ts != 0
+            {
+                let profile =
+                    api::fetch_profile(&config.region, &config.realm, &config.character).await;
+                *state_arc.profile.lock().await = Some(profile.clone());
+                let _ = app.emit("profile-updated", &profile);
+                let _ = app.emit("update-status", "done");
+                return;
             }
         }
     });

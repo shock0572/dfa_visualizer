@@ -1,4 +1,4 @@
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, COOKIE, ORIGIN, REFERER, USER_AGENT};
+use reqwest::header::{ACCEPT, COOKIE, HeaderMap, HeaderValue, ORIGIN, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
@@ -77,30 +77,55 @@ pub struct CharacterSummary {
 
 fn class_name(id: u64) -> &'static str {
     match id {
-        1 => "Warrior", 2 => "Paladin", 3 => "Hunter", 4 => "Rogue",
-        5 => "Priest", 6 => "Death Knight", 7 => "Shaman", 8 => "Mage",
-        9 => "Warlock", 10 => "Monk", 11 => "Druid", 12 => "Demon Hunter",
-        13 => "Evoker", _ => "Unknown",
+        1 => "Warrior",
+        2 => "Paladin",
+        3 => "Hunter",
+        4 => "Rogue",
+        5 => "Priest",
+        6 => "Death Knight",
+        7 => "Shaman",
+        8 => "Mage",
+        9 => "Warlock",
+        10 => "Monk",
+        11 => "Druid",
+        12 => "Demon Hunter",
+        13 => "Evoker",
+        _ => "Unknown",
     }
 }
 
 fn race_name(id: u64) -> &'static str {
     match id {
-        1 => "Human", 2 => "Orc", 3 => "Dwarf", 4 => "Night Elf",
-        5 => "Undead", 6 => "Tauren", 7 => "Gnome", 8 => "Troll",
-        9 => "Goblin", 10 => "Blood Elf", 11 => "Draenei",
-        22 => "Worgen", 24 | 25 | 26 => "Pandaren",
-        27 => "Nightborne", 28 => "Highmountain Tauren",
-        29 => "Void Elf", 30 => "Lightforged Draenei",
-        31 => "Zandalari Troll", 32 => "Kul Tiran",
-        34 => "Dark Iron Dwarf", 35 => "Vulpera",
-        36 => "Mag'har Orc", 37 => "Mechagnome",
-        52 => "Dracthyr", 70 => "Dracthyr",
-        84 => "Earthen", 85 => "Earthen",
+        1 => "Human",
+        2 => "Orc",
+        3 => "Dwarf",
+        4 => "Night Elf",
+        5 => "Undead",
+        6 => "Tauren",
+        7 => "Gnome",
+        8 => "Troll",
+        9 => "Goblin",
+        10 => "Blood Elf",
+        11 => "Draenei",
+        22 => "Worgen",
+        24..=26 => "Pandaren",
+        27 => "Nightborne",
+        28 => "Highmountain Tauren",
+        29 => "Void Elf",
+        30 => "Lightforged Draenei",
+        31 => "Zandalari Troll",
+        32 => "Kul Tiran",
+        34 => "Dark Iron Dwarf",
+        35 => "Vulpera",
+        36 => "Mag'har Orc",
+        37 => "Mechagnome",
+        52 => "Dracthyr",
+        70 => "Dracthyr",
+        84 => "Earthen",
+        85 => "Earthen",
         _ => "Unknown",
     }
 }
-
 
 #[derive(Deserialize)]
 struct VersionResponse {
@@ -261,8 +286,7 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
     // 1 & 2. Max values (for percentages) and character data are independent,
     // so fetch them concurrently.
     let char_url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
-    let (max_values_res, char_resp_res) =
-        tokio::join!(fetch_max_values(), get(&char_url).send());
+    let (max_values_res, char_resp_res) = tokio::join!(fetch_max_values(), get(&char_url).send());
 
     let max_values: HashMap<String, f64> = max_values_res.unwrap_or_default();
 
@@ -328,12 +352,12 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         let rank_entry = rank_data.get(*api_key);
 
         let mut percentage = String::new();
-        if let Some(&mv) = max_values.get(*api_key) {
-            if mv > 0.0 {
-                let pct = (score_val / mv) * 100.0;
-                if pct > 0.0 {
-                    percentage = format!("{:.1}%", pct.min(100.0));
-                }
+        if let Some(&mv) = max_values.get(*api_key)
+            && mv > 0.0
+        {
+            let pct = (score_val / mv) * 100.0;
+            if pct > 0.0 {
+                percentage = format!("{:.1}%", pct.min(100.0));
             }
         }
 
@@ -365,9 +389,17 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
 }
 
 const PRIMARY_PROFESSIONS: &[&str] = &[
-    "alchemy", "blacksmithing", "enchanting", "engineering",
-    "herbalism", "inscription", "jewelcrafting", "leatherworking",
-    "mining", "skinning", "tailoring",
+    "alchemy",
+    "blacksmithing",
+    "enchanting",
+    "engineering",
+    "herbalism",
+    "inscription",
+    "jewelcrafting",
+    "leatherworking",
+    "mining",
+    "skinning",
+    "tailoring",
 ];
 
 fn capitalize(s: &str) -> String {
@@ -378,9 +410,7 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-pub async fn fetch_characters_batch(
-    entries: &[(String, String, String)],
-) -> Vec<CharacterSummary> {
+pub async fn fetch_characters_batch(entries: &[(String, String, String)]) -> Vec<CharacterSummary> {
     let stubs_body: Vec<serde_json::Value> = entries
         .iter()
         .map(|(region, realm, name)| {
@@ -436,14 +466,30 @@ pub async fn fetch_characters_batch(
         }
 
         results.push(CharacterSummary {
-            name: ch.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            realm: ch.get("realm").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: ch
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            realm: ch
+                .get("realm")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             region: region.to_uppercase(),
-            class_name: class_name(ch.get("class").and_then(|v| v.as_u64()).unwrap_or(0)).to_string(),
+            class_name: class_name(ch.get("class").and_then(|v| v.as_u64()).unwrap_or(0))
+                .to_string(),
             race_name: race_name(ch.get("race").and_then(|v| v.as_u64()).unwrap_or(0)).to_string(),
             level: ch.get("level").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            item_level: ch.get("averageItemLevel").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            guild: ch.get("guildName").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            item_level: ch
+                .get("averageItemLevel")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            guild: ch
+                .get("guildName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             professions,
             thumbnail,
             updated: ch.get("updated").and_then(|v| v.as_u64()).unwrap_or(0),
@@ -453,7 +499,11 @@ pub async fn fetch_characters_batch(
     results
 }
 
-pub async fn fetch_updated_timestamp(region: &str, realm: &str, character: &str) -> Result<u64, String> {
+pub async fn fetch_updated_timestamp(
+    region: &str,
+    realm: &str,
+    character: &str,
+) -> Result<u64, String> {
     let region = region.to_lowercase();
     let url = format!("{API_BASE}/characters/{region}/{realm}/{character}");
     let resp = get(&url).send().await.map_err(|e| full_chain(&e))?;
@@ -487,4 +537,3 @@ async fn fetch_max_values() -> Result<HashMap<String, f64>, String> {
     }
     Ok(result)
 }
-

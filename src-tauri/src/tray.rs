@@ -58,19 +58,17 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 position,
                 ..
             } = event
+                && button == tauri::tray::MouseButton::Left
+                && button_state == tauri::tray::MouseButtonState::Up
             {
-                if button == tauri::tray::MouseButton::Left
-                    && button_state == tauri::tray::MouseButtonState::Up
-                {
-                    let app = tray.app_handle();
-                    if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            let _ = window.hide();
-                        } else {
-                            position_at_click(&window, position);
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        position_at_click(&window, position);
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 }
             }
@@ -141,8 +139,7 @@ pub async fn do_refresh(app: &AppHandle) {
         return;
     }
 
-    let profile =
-        crate::api::fetch_profile(&config.region, &config.realm, &config.character).await;
+    let profile = crate::api::fetch_profile(&config.region, &config.realm, &config.character).await;
 
     *state.profile.lock().await = Some(profile.clone());
 
@@ -208,11 +205,11 @@ fn start_game_mode_watcher(app: AppHandle) {
                     if running {
                         let state = app.state::<Arc<AppState>>();
                         let profile = state.profile.lock().await;
-                        if let Some(p) = profile.as_ref() {
-                            if let Some(cs) = &p.completion_score {
-                                let title = format!("{} (#{})", cs.value, cs.world_rank);
-                                let _ = tray.set_title(Some(&title));
-                            }
+                        if let Some(p) = profile.as_ref()
+                            && let Some(cs) = &p.completion_score
+                        {
+                            let title = format!("{} (#{})", cs.value, cs.world_rank);
+                            let _ = tray.set_title(Some(&title));
                         }
                     } else {
                         let _ = tray.set_title(None::<&str>);
