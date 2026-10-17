@@ -1,20 +1,20 @@
 [package]
 name = "dfa-visualizer"
-version = "1.8.7"
+version = "1.8.8"
 edition = "2024"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
-tokio = { version = "1", features = ["full"] }
+tauri = { version = "2.12.4", features = ["tray-icon"] }
+tauri-plugin-shell = "2.5.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+reqwest = { version = "0.13.5", features = ["json", "rustls"], default-features = false }
+tokio = { version = "1.53.3", features = ["full"] }
 dirs = "7"
-sysinfo = "0.39"
+sysinfo = "0.39.6"
 
 [profile.release]
 strip = true

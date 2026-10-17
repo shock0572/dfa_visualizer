@@ -15,7 +15,7 @@ Built with [Tauri v2](https://v2.tauri.app/) (Rust + React/TypeScript).
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 20
+- [Node.js](https://nodejs.org/) 20.19+ or 22.12+ (24 LTS recommended, matching CI)
 - [Rust](https://rustup.rs/) (stable)
 - System dependencies for your platform:
   - **Linux**: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libssl-dev patchelf`
