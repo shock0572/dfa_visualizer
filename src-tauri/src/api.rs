@@ -1,4 +1,7 @@
-use reqwest::header::{ACCEPT, COOKIE, HeaderMap, HeaderValue, ORIGIN, REFERER, USER_AGENT};
+use reqwest::header::{
+    ACCEPT, CONTENT_TYPE, COOKIE, HeaderMap, HeaderValue, ORIGIN, REFERER, USER_AGENT,
+};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
@@ -6,8 +9,11 @@ use std::hash::{BuildHasher, Hasher};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const API_BASE: &str = "https://www.dataforazeroth.com/api";
+// DFA serves the Retail API and datasets under /retail; the old paths now
+// return the website's HTML shell with HTTP 200.
+const API_BASE: &str = "https://www.dataforazeroth.com/retail/api";
 const SITE_BASE: &str = "https://www.dataforazeroth.com";
+const INDEX_URL: &str = "https://www.dataforazeroth.com/retail/dynamic/index.json";
 
 const RANKING_KEYS: &[(&str, &str)] = &[
     ("completion-score", "Completion Score"),
@@ -192,6 +198,28 @@ fn full_chain(err: &dyn std::error::Error) -> String {
     msg
 }
 
+async fn parse_json<T: DeserializeOwned>(response: reqwest::Response) -> Result<T, String> {
+    let response = response.error_for_status().map_err(|e| full_chain(&e))?;
+    let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim();
+    if content_type.eq_ignore_ascii_case("text/html")
+        || content_type.eq_ignore_ascii_case("application/xhtml+xml")
+    {
+        return Err(format!(
+            "Expected JSON but received HTML from {}. Data for Azeroth may have changed its API or returned a browser verification page.",
+            response.url()
+        ));
+    }
+    response.json().await.map_err(|e| full_chain(&e))
+}
+
 /// Shared HTTP client.
 ///
 /// Building a `reqwest::Client` is expensive (TLS config + root cert loading)
@@ -303,7 +331,7 @@ pub async fn fetch_profile(region: &str, realm: &str, character: &str) -> Profil
         return profile;
     }
 
-    let char_data: CharacterResponse = match char_resp.json().await {
+    let char_data: CharacterResponse = match parse_json(char_resp).await {
         Ok(d) => d,
         Err(e) => {
             profile.error = format!("Failed to parse character data: {e}");
@@ -431,7 +459,7 @@ pub async fn fetch_characters_batch(entries: &[(String, String, String)]) -> Vec
         }
     };
 
-    let stubs: Vec<serde_json::Value> = match resp.json().await {
+    let stubs: Vec<serde_json::Value> = match parse_json(resp).await {
         Ok(v) => v,
         Err(e) => {
             eprintln!("Stubs parse failed: {e}");
@@ -510,7 +538,7 @@ pub async fn fetch_updated_timestamp(
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    let data: CharacterResponse = resp.json().await.map_err(|e| e.to_string())?;
+    let data: CharacterResponse = parse_json(resp).await?;
     data.character
         .and_then(|c| c.updated)
         .ok_or_else(|| "No updated timestamp".into())
@@ -519,15 +547,13 @@ pub async fn fetch_updated_timestamp(
 async fn fetch_max_values() -> Result<HashMap<String, f64>, String> {
     // The dynamic index maps each dataset name to its current hashed JSON file;
     // its "max" entry points to the per-stat maximum values used for percentages.
-    let index_url = format!("{SITE_BASE}/dynamic/index.json");
-    let index_resp = get(&index_url).send().await.map_err(|e| e.to_string())?;
-    let index_data: VersionResponse = index_resp.json().await.map_err(|e| e.to_string())?;
+    let index_resp = get(INDEX_URL).send().await.map_err(|e| full_chain(&e))?;
+    let index_data: VersionResponse = parse_json(index_resp).await?;
 
     let max_path = index_data.max.ok_or("No max URL in dynamic index")?;
     let max_url = format!("{SITE_BASE}{max_path}");
-    let max_resp = get(&max_url).send().await.map_err(|e| e.to_string())?;
-    let max_data: HashMap<String, serde_json::Value> =
-        max_resp.json().await.map_err(|e| e.to_string())?;
+    let max_resp = get(&max_url).send().await.map_err(|e| full_chain(&e))?;
+    let max_data: HashMap<String, serde_json::Value> = parse_json(max_resp).await?;
 
     let mut result = HashMap::new();
     for (k, v) in max_data {
@@ -536,4 +562,105 @@ async fn fetch_max_values() -> Result<HashMap<String, f64>, String> {
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn response(status: &str, content_type: &str, body: &str) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!(
+            "http://{}/characters/eu/Silvermoon/Qu%C3%B2rra",
+            listener.local_addr().unwrap()
+        );
+        let payload = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                request.push(stream.read_u8().await.unwrap());
+            }
+            stream.write_all(payload.as_bytes()).await.unwrap();
+            stream.shutdown().await.unwrap();
+        });
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(url)
+            .send()
+            .await
+            .unwrap();
+        server.await.unwrap();
+        response
+    }
+
+    #[tokio::test]
+    async fn parses_retail_character_with_accented_name_and_rankings() {
+        let response = response(
+            "200 OK",
+            "application/json",
+            r#"{
+                "character": {"name": "Quòrra", "realm": "Silvermoon", "updated": 1792495566018},
+                "scores": {"completion-score": 1172297},
+                "rankings": {"completion-score": {"world": 55, "region": 37, "realm": 3}}
+            }"#,
+        )
+        .await;
+        let data: CharacterResponse = parse_json(response).await.unwrap();
+        let character = data.character.unwrap();
+        assert_eq!(character.name.as_deref(), Some("Quòrra"));
+        assert_eq!(character.realm.as_deref(), Some("Silvermoon"));
+        assert_eq!(character.updated, Some(1792495566018));
+        assert_eq!(data.scores.unwrap()["completion-score"], 1172297);
+        let rankings = data.rankings.unwrap();
+        let rank = &rankings["completion-score"];
+        assert_eq!(
+            (rank.world, rank.region, rank.realm),
+            (Some(55), Some(37), Some(3))
+        );
+    }
+
+    #[tokio::test]
+    async fn reports_html_even_when_http_status_is_successful() {
+        let response = response(
+            "200 OK",
+            "text/html; charset=utf-8",
+            "<!doctype html><html><title>Data for Azeroth</title></html>",
+        )
+        .await;
+        let error = parse_json::<serde_json::Value>(response).await.unwrap_err();
+        assert!(error.contains("Expected JSON but received HTML"), "{error}");
+        assert!(
+            error.contains("/characters/eu/Silvermoon/Qu%C3%B2rra"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn preserves_json_error_details() {
+        let response = response("200 OK", "application/json", r#"{"character":"#).await;
+        let error = parse_json::<serde_json::Value>(response).await.unwrap_err();
+        assert!(error.contains("EOF while parsing"), "{error}");
+        assert!(error.contains("line 1 column"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn reports_http_errors_before_parsing_the_body() {
+        let response = response(
+            "503 Service Unavailable",
+            "text/html",
+            "<html>Service Unavailable</html>",
+        )
+        .await;
+        let error = parse_json::<serde_json::Value>(response).await.unwrap_err();
+        assert!(error.contains("503 Service Unavailable"), "{error}");
+        assert!(!error.contains("Expected JSON"), "{error}");
+    }
 }
